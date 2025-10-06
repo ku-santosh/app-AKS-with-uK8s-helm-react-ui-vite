@@ -1,0 +1,24 @@
+env: uat
+replicaCount: 2
+
+image:
+  tag: uat-latest
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  hosts:
+    - host: reactui-uat.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - reactui-uat.mycompany.com
+      secretName: reactui-uat-tls
+
+config:
+  VITE_ENV: "uat"
+  VITE_API_URL: "https://uat-api.mycompany.com"

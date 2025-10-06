@@ -1,0 +1,20 @@
+env: dev
+replicaCount: 1
+
+image:
+  tag: dev-latest
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: reactui-dev.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+config:
+  VITE_ENV: "development"
+  VITE_API_URL: "https://dev-api.mycompany.com"

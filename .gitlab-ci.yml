@@ -1,0 +1,75 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  REGISTRY: myregistry.azurecr.io
+  IMAGE_NAME: react-ui
+
+before_script:
+  - echo "Logging in to Azure Container Registry"
+  - echo $AZURE_ACR_PASSWORD | docker login $REGISTRY -u $AZURE_ACR_USERNAME --password-stdin
+
+test:
+  stage: test
+  image: node:18
+  script:
+    - npm ci
+    - npm run lint || true
+    - npm run test --if-present || true
+
+build:
+  stage: build
+  script:
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        TAG=${CI_COMMIT_SHA:0:8}
+        ENV=development
+        VALUES=charts/react-ui/values-dev.yaml
+      elif [[ "$CI_COMMIT_BRANCH" == "uat" ]]; then
+        TAG=${CI_COMMIT_SHA:0:8}
+        ENV=uat
+        VALUES=charts/react-ui/values-uat.yaml
+      else
+        TAG=${CI_COMMIT_SHA:0:8}
+        ENV=production
+        VALUES=charts/react-ui/values-prod.yaml
+      fi
+    - docker build --build-arg ENV=$ENV -t $REGISTRY/$IMAGE_NAME:$TAG .
+    - docker push $REGISTRY/$IMAGE_NAME:$TAG
+    - docker tag $REGISTRY/$IMAGE_NAME:$TAG $REGISTRY/$IMAGE_NAME:${ENV}-latest
+    - docker push $REGISTRY/$IMAGE_NAME:${ENV}-latest
+  except:
+    - tags
+
+deploy_dev:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  script:
+    - helm version
+    - helm lint ./charts/react-ui
+    - helm upgrade --install react-ui ./charts/react-ui -f charts/react-ui/values-dev.yaml -n $DEV_NAMESPACE --create-namespace --atomic
+  only:
+    - dev
+
+deploy_uat:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  script:
+    - helm version
+    - helm lint ./charts/react-ui
+    - helm upgrade --install react-ui ./charts/react-ui -f charts/react-ui/values-uat.yaml -n $UAT_NAMESPACE --create-namespace --atomic
+  only:
+    - uat
+
+deploy_prod:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  when: manual
+  script:
+    - helm version
+    - helm lint ./charts/react-ui
+    - helm upgrade --install react-ui ./charts/react-ui -f charts/react-ui/values-prod.yaml -n $PROD_NAMESPACE --create-namespace --atomic
+  only:
+    - main

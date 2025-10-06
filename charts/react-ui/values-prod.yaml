@@ -1,0 +1,29 @@
+env: prod
+replicaCount: 3
+
+image:
+  tag: prod-latest
+imagePullSecrets:
+  - name: acr-secret
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: reactui.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - reactui.mycompany.com
+      secretName: reactui-prod-tls
+
+config:
+  VITE_ENV: "production"
+  VITE_API_URL: "https://api.mycompany.com"
