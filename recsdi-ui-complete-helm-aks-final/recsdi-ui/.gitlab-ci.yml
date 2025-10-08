@@ -1,0 +1,66 @@
+stages:
+  - build
+  - deploy_dev
+  - deploy_uat
+  - deploy_prod
+
+variables:
+  REGISTRY_DEV: ubsdevacr.azurecr.io
+  REGISTRY_PROD: ubsreleaseacr.azurecr.io
+  IMAGE_NAME: recsdi-ui
+
+before_script:
+  - echo "Logging in to UBS ACR (dev) if needed"
+
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  script:
+    - docker login $REGISTRY_DEV -u "$ACR_USERNAME_DEV" -p "$ACR_PASSWORD_DEV"
+    - TAG=${CI_COMMIT_SHORT_SHA:-local}
+    - docker build --build-arg ENV=development -t $REGISTRY_DEV/$IMAGE_NAME:$TAG .
+    - docker push $REGISTRY_DEV/$IMAGE_NAME:$TAG
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - build.log
+
+deploy_dev:
+  stage: deploy_dev
+  image: alpine/helm:3.12.0
+  script:
+    - helm repo add stable https://charts.helm.sh/stable || true
+    - helm lint ./charts/recsdi-ui || true
+    - helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-dev.yaml --set image.tag=$CI_COMMIT_SHORT_SHA --namespace at41457-dev-recsdiui-dev --create-namespace --atomic
+  only:
+    - merge_requests
+    - dev
+
+deploy_uat:
+  stage: deploy_uat
+  image: alpine/helm:3.12.0
+  when: manual
+  script:
+    - helm lint ./charts/recsdi-ui || true
+    - helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-uat.yaml --set image.tag=$CI_COMMIT_SHORT_SHA --namespace at41457-uat-recsdiui-uat --create-namespace --atomic
+  only:
+    - main
+
+deploy_prod:
+  stage: deploy_prod
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  when: manual
+  script:
+    - docker login $REGISTRY_DEV -u "$ACR_USERNAME_DEV" -p "$ACR_PASSWORD_DEV"
+    - docker pull $REGISTRY_DEV/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker login $REGISTRY_PROD -u "$ACR_USERNAME_PROD" -p "$ACR_PASSWORD_PROD"
+    - docker tag $REGISTRY_DEV/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA $REGISTRY_PROD/$IMAGE_NAME:prod-latest
+    - docker push $REGISTRY_PROD/$IMAGE_NAME:prod-latest
+    - helm lint ./charts/recsdi-ui || true
+    - helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-prod.yaml --set image.tag=prod-latest --namespace at41457-prod-recsdiui-prod --create-namespace --atomic
+  only:
+    - tags

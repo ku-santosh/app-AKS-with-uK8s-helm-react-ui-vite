@@ -1,31 +1,31 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "react-ui.fullname" . }}
+  name: {{ include "recsdi-ui.fullname" . }}
   labels:
-    app: {{ include "react-ui.name" . }}
-    environment: {{ .Values.env }}
+    app: {{ include "recsdi-ui.name" . }}
+    environment: {{ .Values.env | default "base" }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "react-ui.name" . }}
+      app: {{ include "recsdi-ui.name" . }}
   template:
     metadata:
       labels:
-        app: {{ include "react-ui.name" . }}
-        environment: {{ .Values.env }}
+        app: {{ include "recsdi-ui.name" . }}
+        environment: {{ .Values.env | default "base" }}
     spec:
       imagePullSecrets:
-{{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- toYaml .Values.imagePullSecrets | nindent 10 }}
       containers:
-        - name: react-ui
+        - name: recsdi-ui
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 80
           resources:
-{{- toYaml .Values.resources | nindent 12 }}
+{{- toYaml .Values.resources | nindent 14 }}
           livenessProbe:
             httpGet:
               path: /
@@ -40,4 +40,4 @@ spec:
             periodSeconds: 15
           envFrom:
             - configMapRef:
-                name: {{ include "react-ui.fullname" . }}-config
+                name: {{ include "recsdi-ui.fullname" . }}-config

@@ -1,8 +1,8 @@
-{{- define "react-ui.name" -}}
+{{- define "recsdi-ui.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "react-ui.fullname" -}}
+{{- define "recsdi-ui.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}

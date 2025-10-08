@@ -1,0 +1,10 @@
+apiVersion: v2
+name: recsdi-ui
+description: RECSDI UI Helm chart for AKS (Dev/UAT/Prod)
+type: application
+version: 2.1.0
+appVersion: "2.1"
+maintainers:
+  - name: Cloud DevOps Team
+    email: devops@ubs.com
+home: https://gitlab.ubs.com/devops/recsdi-ui

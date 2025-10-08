@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "react-ui.fullname" . }}
+  name: {{ include "recsdi-ui.fullname" . }}
   labels:
-    app: {{ include "react-ui.name" . }}
+    app: {{ include "recsdi-ui.name" . }}
     environment: {{ .Values.env }}
 spec:
   type: {{ .Values.service.type }}
@@ -12,4 +12,4 @@ spec:
       targetPort: 80
       protocol: TCP
   selector:
-    app: {{ include "react-ui.name" . }}
+    app: {{ include "recsdi-ui.name" . }}

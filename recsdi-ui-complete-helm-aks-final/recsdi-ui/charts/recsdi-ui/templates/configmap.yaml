@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "react-ui.fullname" . }}-config
+  name: {{ include "recsdi-ui.fullname" . }}-config
   labels:
-    environment: {{ .Values.env }}
+    environment: {{ .Values.env | default "base" }}
 data:
 {{- range $key, $value := .Values.config }}
   {{ $key }}: "{{ $value }}"

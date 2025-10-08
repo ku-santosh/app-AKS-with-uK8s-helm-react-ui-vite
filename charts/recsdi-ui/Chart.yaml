@@ -1,5 +1,5 @@
 apiVersion: v2
-name: react-ui
+name: recsdi-ui
 description: React UI Helm chart for AKS (Dev/UAT/Prod)
 type: application
 version: 2.1.0
@@ -7,4 +7,4 @@ appVersion: "2.1"
 maintainers:
   - name: Cloud DevOps Team
     email: devops@mycompany.com
-home: https://gitlab.mycompany.com/react-ui
+home: https://gitlab.mycompany.com/recsdi-ui

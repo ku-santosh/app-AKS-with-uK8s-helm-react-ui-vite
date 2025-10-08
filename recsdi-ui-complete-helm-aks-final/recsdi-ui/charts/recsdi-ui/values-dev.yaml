@@ -1,0 +1,20 @@
+replicaCount: 1
+
+image:
+  repository: ubsdevacr.azurecr.io/recsdi-ui
+  tag: dev-latest
+
+ingress:
+  hosts:
+    - host: recsdiui-dev.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - recsdiui-dev.mycompany.com
+      secretName: recsdiui-dev-tls
+
+config:
+  VITE_ENV: "development"
+  VITE_API_URL: "https://dev-api.mycompany.com"

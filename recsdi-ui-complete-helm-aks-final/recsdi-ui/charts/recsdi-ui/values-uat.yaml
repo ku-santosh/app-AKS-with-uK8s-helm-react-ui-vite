@@ -1,0 +1,22 @@
+replicaCount: 2
+
+image:
+  repository: ubsdevacr.azurecr.io/recsdi-ui
+  tag: uat-latest
+
+ingress:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  hosts:
+    - host: recsdiui-uat.mycompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - recsdiui-uat.mycompany.com
+      secretName: recsdiui-uat-tls
+
+config:
+  VITE_ENV: "uat"
+  VITE_API_URL: "https://uat-api.mycompany.com"
