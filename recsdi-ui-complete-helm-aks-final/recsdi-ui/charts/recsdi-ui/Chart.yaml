@@ -2,8 +2,8 @@ apiVersion: v2
 name: recsdi-ui
 description: RECSDI UI Helm chart for AKS (Dev/UAT/Prod)
 type: application
-version: 2.1.0
-appVersion: "2.1"
+version: 1.0.0  # Chart version (bump for each change)
+appVersion: "1.0.0"  # Application version, can differ from chart version
 maintainers:
   - name: Cloud DevOps Team
     email: devops@ubs.com

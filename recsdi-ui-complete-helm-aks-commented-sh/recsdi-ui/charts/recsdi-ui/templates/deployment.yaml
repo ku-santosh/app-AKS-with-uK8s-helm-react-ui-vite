@@ -1,0 +1,46 @@
+# ============================================================
+# RECSDI-UI Deployment Template
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "recsdi-ui.fullname" . }}
+  labels:
+    app: {{ include "recsdi-ui.name" . }}
+    environment: {{ .Values.env | default "dev" }}
+spec:
+  replicas: {{ .Values.replicaCount }}  # Number of replicas
+  selector:
+    matchLabels:
+      app: {{ include "recsdi-ui.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "recsdi-ui.name" . }}
+        environment: {{ .Values.env | default "dev" }}
+    spec:
+      containers:
+        - name: recsdi-ui
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"  # ACR image
+          ports:
+            - containerPort: 80  # Nginx default port
+          securityContext:
+            runAsNonRoot: true  # Required by AKS restricted policy
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 15

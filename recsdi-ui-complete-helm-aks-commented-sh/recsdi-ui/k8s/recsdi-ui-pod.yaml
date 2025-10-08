@@ -1,0 +1,31 @@
+# ============================================================
+# RECSDI-UI Manual Pod Definition (Commented)
+# ============================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: recsdi-ui-pod
+  namespace: at41457-dev-recsdiui-dev
+  labels:
+    app: recsdi-ui
+    environment: dev
+spec:
+  containers:
+    - name: recsdi-ui
+      image: ubsdevacr.azurecr.io/recsdi-ui:dev-latest
+      ports:
+        - containerPort: 80
+      env:
+        - name: VITE_ENV
+          value: "development"
+        - name: VITE_API_URL
+          value: "https://dev-api.mycompany.com"
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL
+  restartPolicy: Always

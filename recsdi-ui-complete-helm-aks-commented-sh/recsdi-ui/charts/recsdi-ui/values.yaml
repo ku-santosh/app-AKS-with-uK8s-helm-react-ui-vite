@@ -1,0 +1,29 @@
+# ============================================================
+# Base Values for RECSDI-UI Helm Chart
+# ============================================================
+
+replicaCount: 2  # Number of pod replicas to run
+
+image:
+  repository: ubsdevacr.azurecr.io/recsdi-ui  # Image location in Azure Container Registry (Dev)
+  tag: dev-latest  # Default tag for development builds
+  pullPolicy: IfNotPresent  # Policy for pulling container images
+
+ingress:
+  enabled: true  # Enable Ingress resource for HTTP/HTTPS routing
+  className: nginx  # Modern ingress field (replaces deprecated annotation)
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod  # TLS issuer for automatic HTTPS
+  tls:
+    - hosts:
+        - recsdi-ui-dev.example.com
+      secretName: recsdi-ui-tls  # TLS secret managed by cert-manager
+  hosts:
+    - host: recsdi-ui-dev.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+service:
+  type: ClusterIP  # Internal service within AKS cluster
+  port: 80  # Service port exposed to cluster

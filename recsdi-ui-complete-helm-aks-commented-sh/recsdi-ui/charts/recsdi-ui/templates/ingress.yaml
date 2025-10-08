@@ -1,0 +1,26 @@
+# ============================================================
+# RECSDI-UI Ingress Template (Commented)
+# ============================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "recsdi-ui.fullname" . }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx  # Modern field (replaces deprecated annotation)
+  tls:
+    - hosts:
+        - recsdi-ui-dev.example.com
+      secretName: recsdi-ui-tls
+  rules:
+    - host: recsdi-ui-dev.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "recsdi-ui.fullname" . }}
+                port:
+                  number: 80

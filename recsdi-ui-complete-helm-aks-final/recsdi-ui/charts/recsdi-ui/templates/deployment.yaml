@@ -1,31 +1,63 @@
+# ============================================================
+# RECSDI-UI Deployment Template
+# ------------------------------------------------------------
+# This Deployment manages the RECSDI-UI Pods in AKS.
+# AKS enforces PodSecurity (restricted:latest), so securityContext
+# and non-root rules are added for compliance.
+# ============================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "recsdi-ui.fullname" . }}
+  name: {{ include "recsdi-ui.fullname" . }}   # Helm helper for consistent naming
   labels:
-    app: {{ include "recsdi-ui.name" . }}
-    environment: {{ .Values.env | default "base" }}
+    app: {{ include "recsdi-ui.name" . }}      # Label app name
+    environment: {{ .Values.env | default "base" }}  # Environment identifier (dev/uat/prod)
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.replicaCount }}         # Number of pod replicas
   selector:
     matchLabels:
-      app: {{ include "recsdi-ui.name" . }}
+      app: {{ include "recsdi-ui.name" . }}    # Match pods by label
   template:
     metadata:
       labels:
-        app: {{ include "recsdi-ui.name" . }}
+        app: {{ include "recsdi-ui.name" . }}  # Labels applied to pod
         environment: {{ .Values.env | default "base" }}
     spec:
       imagePullSecrets:
-      {{- toYaml .Values.imagePullSecrets | nindent 10 }}
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}  # Secret for pulling ACR image
       containers:
         - name: recsdi-ui
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"  # Image from UBS ACR
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           ports:
-            - containerPort: 80
+            - containerPort: 80    # Port exposed by container (React UI)
+          
+          # ----------------------------------------------------------
+          # ✅ AKS PodSecurity Compliance
+          # Ensures container runs as non-root and drops all privileges.
+          # Required by 'restricted:latest' security baseline.
+          # ----------------------------------------------------------
+          securityContext:
+            runAsNonRoot: true                # Must not run as root user
+            allowPrivilegeEscalation: false   # Prevent privilege escalation
+            seccompProfile:
+              type: RuntimeDefault            # Default secure Linux syscall profile
+            capabilities:
+              drop:
+                - ALL                         # Drop all Linux kernel capabilities
+
+          # ----------------------------------------------------------
+          # ✅ Resource Limits
+          # Helps with cluster scheduling and scaling
+          # ----------------------------------------------------------
           resources:
-{{- toYaml .Values.resources | nindent 14 }}
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ----------------------------------------------------------
+          # ✅ Health Checks
+          # AKS probes to monitor pod readiness & health
+          # ----------------------------------------------------------
           livenessProbe:
             httpGet:
               path: /
@@ -38,6 +70,11 @@ spec:
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 15
+
+          # ----------------------------------------------------------
+          # ✅ Environment Variables (if any)
+          # Pulls configMap variables automatically
+          # ----------------------------------------------------------
           envFrom:
             - configMapRef:
                 name: {{ include "recsdi-ui.fullname" . }}-config

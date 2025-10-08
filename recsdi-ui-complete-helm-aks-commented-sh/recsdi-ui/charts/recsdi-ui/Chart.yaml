@@ -1,0 +1,9 @@
+# ============================================================
+# RECSDI-UI Helm Chart Metadata (Fully Commented)
+# ============================================================
+apiVersion: v2  # Helm Chart API version (v2 is used for modern Helm)
+name: recsdi-ui  # Chart name, must match folder name
+description: A Helm chart for deploying the RECSDI-UI React application on AKS
+type: application  # Chart type: 'application' or 'library'
+version: 1.0.0  # Chart version (bump for each change)
+appVersion: "1.0.0"  # Application version, can differ from chart version

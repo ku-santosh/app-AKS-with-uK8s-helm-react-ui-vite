@@ -3,7 +3,7 @@ replicaCount: 2
 image:
   # Default: points to Dev ACR; overridden in environment files
   repository: ubsdevacr.azurecr.io/recsdi-ui
-  tag: latest
+  tag: dev-latest  # Default tag for development builds
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -14,17 +14,34 @@ service:
 
 config: {}
 
+# ingress:
+#   enabled: true
+#   className: nginx
+#   annotations:
+#     kubernetes.io/ingress.class: nginx
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+#   hosts:
+#     - host: recsdiui-dev.mycompany.com
+#       paths:
+#         - path: /
+#           pathType: Prefix
+# ============================================================
+# Ingress Configuration
+# ============================================================
 ingress:
-  enabled: true
-  className: nginx
+  enabled: true                     # Enable ingress for app
+  className: nginx                  # ✅ modern field, replaces old annotation
   annotations:
-    kubernetes.io/ingress.class: nginx
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: letsencrypt-prod  # TLS issuer
+  tls:
+    - hosts:
+        - recsdi-ui-dev.example.com # Update with your actual dev host
+      secretName: recsdi-ui-tls     # Secret to store TLS certs
   hosts:
-    - host: recsdiui-dev.mycompany.com
+    - host: recsdi-ui-dev.example.com
       paths:
         - path: /
-          pathType: Prefix
+          pathType: Prefix          
   tls:
     - hosts:
         - recsdiui-dev.mycompany.com
