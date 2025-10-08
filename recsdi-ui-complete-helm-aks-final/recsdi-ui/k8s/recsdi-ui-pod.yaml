@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: recsdi-ui-pod
+  namespace: at41457-dev-recsdiui-dev
+  labels:
+    app: recsdi-ui
+    environment: dev
+spec:
+  containers:
+    - name: recsdi-ui
+      image: ubsdevacr.azurecr.io/recsdi-ui:dev-latest
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 80
+      env:
+        - name: VITE_ENV
+          value: "development"
+        - name: VITE_API_URL
+          value: "https://dev-api.mycompany.com"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 15
+        periodSeconds: 20
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 10
+  restartPolicy: Always
+  imagePullSecrets:
+    - name: acr-secret

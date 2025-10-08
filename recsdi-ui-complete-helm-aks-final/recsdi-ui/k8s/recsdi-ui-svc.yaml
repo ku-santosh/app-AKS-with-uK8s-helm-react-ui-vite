@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: recsdi-ui-svc
+  namespace: at41457-dev-recsdiui-dev
+spec:
+  selector:
+    app: recsdi-ui
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP

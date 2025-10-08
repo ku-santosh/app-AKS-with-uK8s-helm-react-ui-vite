@@ -5,6 +5,7 @@ stages:
   - deploy_prod
 
 variables:
+  # UBS ACRs
   REGISTRY_DEV: ubsdevacr.azurecr.io
   REGISTRY_PROD: ubsreleaseacr.azurecr.io
   IMAGE_NAME: recsdi-ui

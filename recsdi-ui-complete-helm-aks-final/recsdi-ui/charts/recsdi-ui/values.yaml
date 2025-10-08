@@ -1,6 +1,7 @@
 replicaCount: 2
 
 image:
+  # Default: points to Dev ACR; overridden in environment files
   repository: ubsdevacr.azurecr.io/recsdi-ui
   tag: latest
   pullPolicy: IfNotPresent
