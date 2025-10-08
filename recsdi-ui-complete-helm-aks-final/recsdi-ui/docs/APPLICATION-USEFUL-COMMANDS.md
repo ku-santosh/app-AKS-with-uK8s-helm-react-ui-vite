@@ -38,6 +38,12 @@ az aks update -n kd416753357neu01 -g AT53357_DEV_NEU_AKS --attach-acr ubsrelease
 ```bash
 helm install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-dev.yaml --namespace at41457-dev-recsdiui-dev --dry-run --debug
 ```
+---
+
+```bash
+helm lint ./charts/recsdi-ui
+helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-dev.yaml -n at41457-dev-recsdiui-dev
+```
 
 ### ✅ Deploy (DEV/UAT/PROD)
 ```bash
@@ -56,7 +62,47 @@ helm list -A
 helm status recsdi-ui -n at41457-dev-recsdiui-dev
 helm diff upgrade recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-dev.yaml -n at41457-dev-recsdiui-dev
 ```
+## 🧱 Recommended Workflow (Per Environment)
 
+| Environment |	Command | Description
+|--------|----------|----------|
+| **Dev** |	`helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-dev.yaml -n dev --atomic` |	Quick deploy with no TLS |
+| **UAT** |	`helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-uat.yaml -n uat --atomic` |	Test HTTPS with staging cert |
+| **Prod** |	`helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-prod.yaml -n prod --atomic` |	Full TLS-enabled deploy |
+| **Rollback (any)** |	`helm rollback recsdi-ui 1 -n prod` |	Roll back to a previous revision safely |
+
+---
+# kubectl & helm Cheat Sheet
+```bash
+Helm:
+  helm lint ./charts/recsdi-ui
+  helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-prod.yaml -n <namespace> --atomic
+  helm list -n <namespace>
+  helm rollback recsdi-ui <revision> -n <namespace>
+  helm uninstall recsdi-ui -n <namespace>
+```
+```bash
+kubectl:
+  kubectl get pods -n <ns>
+  kubectl logs <pod> -n <ns>
+  kubectl exec -it <pod> -n <ns> -- sh
+  kubectl apply -f charts/recsdi-ui/cluster-issuer.yaml
+```
+---
+## 🚀 Deploy / Upgrade
+- **Dev:**  
+  `helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-dev.yaml -n dev --atomic`  
+  → Deploys React UI to Dev (non-TLS).
+
+- **UAT:**  
+  `helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-uat.yaml -n uat --atomic`  
+  → Deploys to UAT with optional staging TLS.
+
+- **Prod:**  
+  `helm upgrade --install recsdi-ui ./charts/recsdi-ui -f charts/recsdi-ui/values-prod.yaml -n prod --atomic`  
+  → Deploys to production with cert-manager TLS and HTTPS enforced.
+
+⚠️ *Tip:* Always use `--atomic` to ensure rollback on failed deployments.
 ---
 
 ## 🧠 6️⃣ Pod & Service Monitoring
