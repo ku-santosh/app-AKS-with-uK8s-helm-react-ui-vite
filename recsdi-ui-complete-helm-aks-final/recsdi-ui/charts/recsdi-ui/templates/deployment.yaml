@@ -1,31 +1,66 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  # The deployment name will include chart-specific naming convention
   name: {{ include "recsdi-ui.fullname" . }}
   labels:
     app: {{ include "recsdi-ui.name" . }}
     environment: {{ .Values.env | default "base" }}
+
 spec:
+  # Number of replicas, defined in values.yaml
   replicas: {{ .Values.replicaCount }}
+
+  # Pod label selector for matching
   selector:
     matchLabels:
       app: {{ include "recsdi-ui.name" . }}
+
+  # -------------------------------------------------------------------
+  # Pod Template - defines how each pod will be created
+  # -------------------------------------------------------------------
   template:
     metadata:
       labels:
         app: {{ include "recsdi-ui.name" . }}
         environment: {{ .Values.env | default "base" }}
     spec:
+      # ----------------------------------------------------------------
+      # Image pull secrets (used to authenticate to private ACR)
+      # ----------------------------------------------------------------
       imagePullSecrets:
-      {{- toYaml .Values.imagePullSecrets | nindent 10 }}
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+
+      # ----------------------------------------------------------------
+      # Container configuration
+      # ----------------------------------------------------------------
       containers:
         - name: recsdi-ui
+          # Combine repository and tag from values.yaml
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+
+          # ------------------------------------------------------------
+          # Security context — required by Azure Gatekeeper policies
+          # ------------------------------------------------------------
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          # ------------------------------------------------------------
+          # Port exposure for the container
+          # ------------------------------------------------------------
           ports:
-            - containerPort: 80
+            - containerPort: 80  # Matches the service port
+
+          # ------------------------------------------------------------
+          # Resource requests and limits
+          # ------------------------------------------------------------
           resources:
-{{- toYaml .Values.resources | nindent 14 }}
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ------------------------------------------------------------
+          # Health probes — ensures the pod is working correctly
+          # ------------------------------------------------------------
           livenessProbe:
             httpGet:
               path: /
@@ -38,6 +73,22 @@ spec:
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 15
+
+          # ------------------------------------------------------------
+          # Environment variables from ConfigMap
+          # ------------------------------------------------------------
           envFrom:
             - configMapRef:
                 name: {{ include "recsdi-ui.fullname" . }}-config
+
+          # ------------------------------------------------------------
+          # Mount writable /tmp directory (needed for readOnly FS)
+          # ------------------------------------------------------------
+          volumeMounts:
+            {{- toYaml .Values.volumeMounts | nindent 12 }}
+
+      # ----------------------------------------------------------------
+      # Volumes definition (emptyDir for temporary writable data)
+      # ----------------------------------------------------------------
+      volumes:
+        {{- toYaml .Values.volumes | nindent 8 }}

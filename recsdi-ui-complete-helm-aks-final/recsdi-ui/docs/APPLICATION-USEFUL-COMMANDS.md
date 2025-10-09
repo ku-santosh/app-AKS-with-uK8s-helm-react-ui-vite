@@ -80,7 +80,19 @@ Helm:
   helm list -n <namespace>
   helm rollback recsdi-ui <revision> -n <namespace>
   helm uninstall recsdi-ui -n <namespace>
+  helm upgrade --install recsdi-ui ./charts/recsdi-ui -f values.yaml -n at41457-dev-recsdiui-dev
+```  
+  ### Deploy with both files:
+  #### Helm does this internally:
+  - 🧮 Step 1: Load values.yaml (base values)
+  - 🧮 Step 2: Merge values from values-dev.yaml
+  - 🧮 Step 3: If a key exists in both → the dev file overrides the base one
+
+  
+```bash  
+  helm upgrade --install recsdi-ui ./mChart/recsdi-ui -f values.yaml -f values-dev.yaml -n at41457-dev-recsdiui-dev
 ```
+
 ```bash
 kubectl:
   kubectl get pods -n <ns>
@@ -110,6 +122,7 @@ kubectl:
 kubectl get all -n at41457-dev-recsdiui-dev
 kubectl get pods -n at41457-dev-recsdiui-dev
 kubectl describe pod <pod-name> -n at41457-dev-recsdiui-dev
+kubectl describe pod <pod-name>
 kubectl logs <pod-name> -n at41457-dev-recsdiui-dev
 kubectl logs -f <pod-name> -n at41457-dev-recsdiui-dev
 kubectl exec -it <pod-name> -n at41457-dev-recsdiui-dev -- sh

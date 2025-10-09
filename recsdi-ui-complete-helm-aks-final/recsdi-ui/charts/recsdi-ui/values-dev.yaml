@@ -1,20 +1,91 @@
+# -----------------------------------------------
+# Environment: Development (Dev)
+# Purpose: Overrides default values.yaml settings
+# -----------------------------------------------
+
+# The environment name used for labeling and Helm templating
+env: dev
+
+# Number of pod replicas to run in the Dev namespace
 replicaCount: 1
 
+# -------------------------------------------------
+# Container image details
+# -------------------------------------------------
 image:
-  repository: ubsdevacr.azurecr.io/recsdi-ui
+  # Private ACR repository location (your Azure Container Registry)
+  repository: ubstdevacr.azurecr.io/recsdi-ui
+  # Tag for the image used in the Dev environment
   tag: dev-latest
+  # Policy to control when Kubernetes pulls the image (optional override)
+  pullPolicy: IfNotPresent
 
+# -------------------------------------------------
+# Image pull secrets (required for private registries)
+# -------------------------------------------------
+# This secret must already exist in the Dev namespace
+# and contain ACR credentials created with:
+# kubectl create secret docker-registry acr-auth \
+#   --docker-server=ubstdevacr.azurecr.io \
+#   --docker-username=<USERNAME> \
+#   --docker-password=<PASSWORD> \
+#   --namespace <namespace>
+imagePullSecrets:
+  - name: acr-auth
+
+# -------------------------------------------------
+# Ingress settings — control public exposure via NGINX
+# -------------------------------------------------
 ingress:
+  # Enable ingress for Dev environment
+  enabled: true
+  # Use NGINX ingress controller
+  className: nginx
+  # Optional annotations (like cert-manager, rewrite rules, etc.)
+  annotations: {}
+  # Domain and routing configuration
   hosts:
-    - host: recsdiui-dev.mycompany.com
+    - host: recsdi-ui.uk8s-aks-neu-dev.azpriv-cloud.ubs.net  # Dev environment hostname
       paths:
-        - path: /
-          pathType: Prefix
+        - path: /             # Root path for the application
+          pathType: Prefix    # Prefix-based matching for routes
+  # TLS configuration for HTTPS
   tls:
     - hosts:
-        - recsdiui-dev.mycompany.com
-      secretName: recsdiui-dev-tls
+        - recsdi-ui.uk8s-aks-neu-dev.azpriv-cloud.ubs.net
+      secretName: recsdiui-dev-tls  # TLS secret must exist (usually created by cert-manager)
 
+# -------------------------------------------------
+# Environment variables for frontend app (React/Vite)
+# These will be injected as ConfigMap values in the pod
+# -------------------------------------------------
 config:
-  VITE_ENV: "development"
-  VITE_API_URL: "https://dev-api.mycompany.com"
+  VITE_ENV: "development"                   # Frontend environment label
+  VITE_API_URL: "https://dev-api.mycompany.com"  # Backend API endpoint for Dev
+
+# -------------------------------------------------
+# Security context - required by Azure Policy & Gatekeeper
+# Enforces container hardening (non-root, read-only FS, etc.)
+# -------------------------------------------------
+securityContext:
+  readOnlyRootFilesystem: true        # Prevents writing to root FS
+  runAsNonRoot: true                  # Ensures container doesn’t run as root
+  allowPrivilegeEscalation: false     # Blocks privilege escalation
+  runAsUser: 1000                     # Runs container under non-root UID
+  capabilities:
+    drop:
+      - ALL                           # Drops all Linux kernel capabilities
+  seccompProfile:
+    type: RuntimeDefault              # Uses the default Seccomp profile for safety
+
+# -------------------------------------------------
+# Writable temporary storage
+# Needed because the root filesystem is now read-only
+# -------------------------------------------------
+volumeMounts:
+  - name: tmp-storage                 # Name of the volume mount
+    mountPath: /tmp                   # Mount path for writable temporary data
+
+volumes:
+  - name: tmp-storage                 # Volume definition matching mount name
+    emptyDir: {}                      # Creates an ephemeral, writable directory inside the pod

@@ -1,43 +1,112 @@
-replicaCount: 2
+# -------------------------------------------------------------------
+# 🌍 Environment configuration
+# -------------------------------------------------------------------
+env: base  # Default environment (can be overridden in helm install command)
 
+# -------------------------------------------------------------------
+# 🧮 Replica configuration
+# -------------------------------------------------------------------
+replicaCount: 1  # Number of pod replicas
+
+# -------------------------------------------------------------------
+# 🐳 Image configuration
+# -------------------------------------------------------------------
 image:
-  # Default: points to Dev ACR; overridden in environment files
-  repository: ubsdevacr.azurecr.io/recsdi-ui
-  tag: latest
-  pullPolicy: IfNotPresent
+  repository: ubstdevacr.azurecr.io/recsdi-ui  # ACR repo name
+  tag: latest                                   # Image tag
+  pullPolicy: IfNotPresent                          # Avoid pulling if already present
 
-imagePullSecrets: []
+# -------------------------------------------------------------------
+# 🔑 Image pull secrets (needed for private ACR)
+# -------------------------------------------------------------------
+# Create this secret via:
+# kubectl create secret docker-registry acr-auth \
+#   --docker-server=ubstdevacr.azurecr.io \
+#   --docker-username=<username> \
+#   --docker-password=<password> \
+#   --namespace <namespace>
+# -------------------------------------------------------------------
+imagePullSecrets:
+  - name: acr-auth  # Kubernetes secret name for ACR authentication
 
+# -------------------------------------------------------------------
+# 🧠 Service configuration
+# -------------------------------------------------------------------
 service:
-  type: ClusterIP
-  port: 80
+  type: ClusterIP  # Internal cluster service type
+  port: 80         # Service port
 
-config: {}
+# -------------------------------------------------------------------
+# ⚙️ ConfigMap key-value pairs (if any)
+# -------------------------------------------------------------------
+config: {}  # Optional configuration injected into ConfigMap
 
+# -------------------------------------------------------------------
+# 🌐 Ingress configuration (optional)
+# -------------------------------------------------------------------
 ingress:
   enabled: true
   className: nginx
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: recsdiui-dev.mycompany.com
+    - host: recsdi-ui.uk8s-aks-neu-dev.azpriv-cloud.ubs.net
       paths:
         - path: /
           pathType: Prefix
   tls:
     - hosts:
-        - recsdiui-dev.mycompany.com
+        - recsdi-ui.uk8s-aks-neu-dev.azpriv-cloud.ubs.net
       secretName: recsdiui-dev-tls
 
+# -------------------------------------------------------------------
+# ⚖️ Resource requests and limits
+# -------------------------------------------------------------------
 resources:
   requests:
-    cpu: 100m
+    cpu: 50m
     memory: 128Mi
   limits:
-    cpu: 250m
-    memory: 256Mi
+    cpu: 90m
+    memory: 128Mi
 
+# -------------------------------------------------------------------
+# 🧱 Security context (required by Azure Policy)
+# -------------------------------------------------------------------
+securityContext:
+  readOnlyRootFilesystem: true        # Makes container FS read-only
+  allowPrivilegeEscalation: false     # Prevent privilege escalation
+  runAsNonRoot: true                  # Must run as non-root user
+  runAsUser: 1000                     # UID for non-root user
+  capabilities:
+    drop:
+      - ALL                           # Drop all Linux capabilities
+  seccompProfile:
+    type: RuntimeDefault              # Default Linux security profile
+
+# -------------------------------------------------------------------
+# 💾 Writable volumes for temporary files (needed due to read-only FS)
+# -------------------------------------------------------------------
+volumeMounts:
+  - name: tmp-storage
+    mountPath: /tmp                   # Allow writing temporary files
+volumes:
+  - name: tmp-storage
+    emptyDir: {}                      # In-memory writable space
+
+# -------------------------------------------------------------------
+# 🚀 Autoscaling (disabled by default)
+# -------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# -------------------------------------------------------------------
+# 🧭 Node selection and tolerations (optional)
+# -------------------------------------------------------------------
 nodeSelector: {}
 tolerations: []
 affinity: {}
