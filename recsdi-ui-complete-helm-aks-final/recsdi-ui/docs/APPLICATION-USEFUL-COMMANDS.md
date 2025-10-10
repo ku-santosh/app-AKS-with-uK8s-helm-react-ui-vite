@@ -192,3 +192,35 @@ kubectl get events -n at41457-dev-recsdiui-dev --sort-by=.metadata.creationTimes
 
 ### 💡 Tip:
 > Always test deployments with `helm lint` and `--dry-run` before applying to ensure YAML correctness.
+
+## ✅ Environment Parity Summary
+
+| Environment | Values File        | Registry                   | Namespace                    | API URL                         | TLS Secret          | Replica Count |
+| ----------- | ------------------ | -------------------------- | ---------------------------- | ------------------------------- | ------------------- | ------------- |
+| **Dev**     | `values-dev.yaml`  | `ubstdevacr.azurecr.io`    | `at41457-dev-recsdiui-dev`   | `https://dev-api.mycompany.com` | `recsdiui-dev-tls`  | 1             |
+| **UAT**     | `values-uat.yaml`  | `ubstdevacr.azurecr.io`    | `at41457-uat-recsdiui-uat`   | `https://uat-api.mycompany.com` | `recsdiui-uat-tls`  | 1             |
+| **Prod**    | `values-prod.yaml` | `ubsreleaseacr.azurecr.io` | `at41457-prod-recsdiui-prod` | `https://api.mycompany.com`     | `recsdiui-prod-tls` | 2             |
+
+## 💡 Final Verification Steps Before Commit
+
+### 1. ✅ Ensure AKS ACR link
+```bash
+az aks update -n <cluster-name> -g <resource-group> --attach-acr ubstdevacr
+az aks update -n <cluster-name> -g <resource-group> --attach-acr ubsreleaseacr
+```
+
+### 2. ✅ Check that all namespaces exist (or Helm can create them)
+```bash
+kubectl get ns | grep recsdiui
+```
+### 3. ✅ Run lint before merge
+```bash
+helm lint ./HelmChart/recsdi-ui
+```
+### 4. ✅ Dry-run test
+```bash
+helm upgrade --install recsdi-ui ./HelmChart/recsdi-ui \
+  -f HelmChart/recsdi-ui/values-uat.yaml \
+  --set image.repository=ubstdevacr.azurecr.io/recsdi-ui \
+  --set image.tag=test-123 --dry-run --debug
+```
