@@ -1,0 +1,1 @@
+console.log('RecsDI UI App Loaded');

@@ -1,0 +1,225 @@
+# --------------------------------------------------------------
+# 🌟 GitLab CI/CD Pipeline for recsdi-ui
+# Fully automated pipeline with testing, build, validation, deployment, and smoke test
+# Environments: Dev, UAT, Prod (auto-handled by branch)
+# --------------------------------------------------------------
+
+stages:
+  - test
+  - build
+  - validate
+  - deploy
+  - smoke_test
+
+# ---------------------
+# 🔧 Global Variables
+# ---------------------
+variables:
+  # Vault configuration (for secret retrieval if needed)
+  VAULT_AUTH_ROLE: gl_dev_at41457
+  VAULT_NAMESPACE: AT41457
+  VAULT_SERVER_URL: https://vault.eu.eva.ubsdev.net
+
+  # Azure Container Registry endpoints
+  REGISTRY_DEV: ubstdevacr.azurecr.io
+  REGISTRY_PROD: ubsreleaseacr.azurecr.io
+
+  # Docker image name
+  IMAGE_NAME: recsdi-ui
+
+  # Kubernetes namespaces per environment
+  DEV_NAMESPACE: at41457-dev-recsdiui-dev
+  UAT_NAMESPACE: at41457-uat-recsdiui-uat
+  PROD_NAMESPACE: at41457-prod-recsdiui-prod
+
+  # Helm chart path
+  HELM_CHART_PATH: ./HelmChart/recsdi-ui
+
+  # Tag for Docker image
+  TAG: $CI_COMMIT_SHORT_SHA
+
+  # Default timeout for Helm (10 minutes)
+  HELM_TIMEOUT: 10m
+
+# --------------------------------------------------------------
+# 🔐 Global Before Script
+# --------------------------------------------------------------
+before_script:
+  - echo "🔐 Logging into Azure Container Registry..."
+  - echo $AZURE_ACR_PASSWORD | docker login $REGISTRY_DEV -u $AZURE_ACR_USERNAME --password-stdin
+
+# --------------------------------------------------------------
+# 🧪 Stage 1: Test (lint + unit test)
+# --------------------------------------------------------------
+test:
+  stage: test
+  image: node:18
+  script:
+    - echo "🧪 Running lint and tests..."
+    - npm ci
+    - npm run lint || true
+    - npm run test --if-present || true
+  only:
+    - branches
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - coverage/
+      - dist/
+
+# --------------------------------------------------------------
+# 🏗️ Stage 2: Build (Docker + Push)
+# --------------------------------------------------------------
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  script:
+    - echo "🏗️ Building Docker image for branch: $CI_COMMIT_BRANCH"
+
+    # Determine environment
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        ENV=development
+        VALUES=$HELM_CHART_PATH/values-dev.yaml
+        REGISTRY=$REGISTRY_DEV
+      elif [[ "$CI_COMMIT_BRANCH" == "uat" ]]; then
+        ENV=uat
+        VALUES=$HELM_CHART_PATH/values-uat.yaml
+        REGISTRY=$REGISTRY_DEV
+      else
+        ENV=production
+        VALUES=$HELM_CHART_PATH/values-prod.yaml
+        REGISTRY=$REGISTRY_PROD
+      fi
+
+    # Login to correct ACR
+    - echo "🔐 Logging in to $REGISTRY"
+    - |
+      if [[ "$ENV" == "production" ]]; then
+        echo $AZURE_ACR_PASSWORD_PROD | docker login $REGISTRY -u $AZURE_ACR_USERNAME_PROD --password-stdin
+      else
+        echo $AZURE_ACR_PASSWORD | docker login $REGISTRY -u $AZURE_ACR_USERNAME --password-stdin
+      fi
+
+    # Build and push image
+    - docker build --build-arg ENV=$ENV -t $REGISTRY/$IMAGE_NAME:$TAG .
+    - docker push $REGISTRY/$IMAGE_NAME:$TAG
+
+    # Tag latest for each environment
+    - docker tag $REGISTRY/$IMAGE_NAME:$TAG $REGISTRY/$IMAGE_NAME:${ENV}-latest
+    - docker push $REGISTRY/$IMAGE_NAME:${ENV}-latest
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - Dockerfile
+  except:
+    - tags
+
+# --------------------------------------------------------------
+# ✅ Stage 3: Validate (Helm Lint + Dry Run)
+# --------------------------------------------------------------
+validate:
+  stage: validate
+  image: alpine/helm:3.12.0
+  script:
+    - echo "✅ Validating Helm chart and configuration..."
+
+    # Determine environment
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        ENV=development
+        VALUES=$HELM_CHART_PATH/values-dev.yaml
+        REGISTRY=$REGISTRY_DEV
+      elif [[ "$CI_COMMIT_BRANCH" == "uat" ]]; then
+        ENV=uat
+        VALUES=$HELM_CHART_PATH/values-uat.yaml
+        REGISTRY=$REGISTRY_DEV
+      else
+        ENV=production
+        VALUES=$HELM_CHART_PATH/values-prod.yaml
+        REGISTRY=$REGISTRY_PROD
+      fi
+
+    # Helm lint and dry-run render
+    - helm dependency update $HELM_CHART_PATH || true
+    - helm lint $HELM_CHART_PATH
+    - helm template recsdi-ui $HELM_CHART_PATH \
+        -f $VALUES \
+        --set image.repository=$REGISTRY/$IMAGE_NAME \
+        --set image.tag=$TAG \
+        --debug --dry-run
+  only:
+    - branches
+
+# --------------------------------------------------------------
+# 🚀 Stage 4: Deploy (Helm Upgrade/Install)
+# --------------------------------------------------------------
+deploy:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  script:
+    - echo "🚀 Deploying recsdi-ui via Helm..."
+
+    # Determine environment
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        ENV=development
+        VALUES=$HELM_CHART_PATH/values-dev.yaml
+        NAMESPACE=$DEV_NAMESPACE
+        REGISTRY=$REGISTRY_DEV
+      elif [[ "$CI_COMMIT_BRANCH" == "uat" ]]; then
+        ENV=uat
+        VALUES=$HELM_CHART_PATH/values-uat.yaml
+        NAMESPACE=$UAT_NAMESPACE
+        REGISTRY=$REGISTRY_DEV
+      else
+        ENV=production
+        VALUES=$HELM_CHART_PATH/values-prod.yaml
+        NAMESPACE=$PROD_NAMESPACE
+        REGISTRY=$REGISTRY_PROD
+      fi
+
+    - echo "📦 Environment: $ENV"
+    - echo "📁 Namespace: $NAMESPACE"
+    - echo "📊 Using values file: $VALUES"
+
+    # Helm deploy with rollback protection
+    - helm repo add stable https://charts.helm.sh/stable || true
+    - helm dependency update $HELM_CHART_PATH || true
+    - helm upgrade --install recsdi-ui $HELM_CHART_PATH \
+        -f $VALUES \
+        --set image.repository=$REGISTRY/$IMAGE_NAME \
+        --set image.tag=$TAG \
+        --namespace $NAMESPACE \
+        --create-namespace \
+        --atomic \
+        --wait \
+        --timeout $HELM_TIMEOUT
+  environment:
+    name: review/$CI_COMMIT_BRANCH
+  only:
+    - branches
+
+# --------------------------------------------------------------
+# 🔍 Stage 5: Smoke Test (Post-Deployment Verification)
+# --------------------------------------------------------------
+smoke_test:
+  stage: smoke_test
+  image: curlimages/curl:latest
+  script:
+    - echo "🔍 Running post-deployment smoke test..."
+    - |
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        URL="https://recsdi-ui-dev.yourdomain.com/health"
+      elif [[ "$CI_COMMIT_BRANCH" == "uat" ]]; then
+        URL="https://recsdi-ui-uat.yourdomain.com/health"
+      else
+        URL="https://recsdi-ui-prod.yourdomain.com/health"
+      fi
+    - echo "Pinging $URL ..."
+    - curl -k -f -s $URL || (echo "❌ Smoke test failed! Application not healthy." && exit 1)
+  only:
+    - branches
+  when: on_success

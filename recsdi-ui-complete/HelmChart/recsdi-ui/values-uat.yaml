@@ -1,0 +1,97 @@
+# --------------------------------------------------------------
+# 🧪 UAT Environment - Helm values override for recsdi-ui
+# --------------------------------------------------------------
+
+# Identifies this environment
+env: uat
+
+# Number of pods to run for UAT (usually same as Dev)
+replicaCount: 1
+
+# -------------------------------------------------
+# 🖼️ Image settings
+# These will be overridden dynamically by CI/CD:
+#   --set image.repository=<registry>
+#   --set image.tag=<commit_sha>
+# -------------------------------------------------
+image:
+  repository: ""   # leave blank, pipeline injects value
+  tag: ""           # leave blank, pipeline injects value
+  pullPolicy: IfNotPresent
+
+# -------------------------------------------------
+# 🔐 Image pull secrets (optional)
+# Required only if ACR is private and not attached to AKS
+# -------------------------------------------------
+imagePullSecrets:
+  - name: acr-auth
+
+# -------------------------------------------------
+# 🧩 Service configuration
+# Internal access only in UAT (typically via internal ingress)
+# -------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+
+# -------------------------------------------------
+# 🌐 Ingress configuration
+# Points to UAT AKS ingress hostname
+# -------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: recsdi-ui.uk8s-aks-neu-uat.azpriv-cloud.ubs.net  # Replace with actual UAT DNS
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - recsdi-ui.uk8s-aks-neu-uat.azpriv-cloud.ubs.net
+      secretName: recsdiui-uat-tls  # TLS secret for UAT environment
+
+# -------------------------------------------------
+# ⚙️ ConfigMap entries (frontend runtime configuration)
+# -------------------------------------------------
+config:
+  VITE_ENV: "uat"
+  VITE_API_URL: "https://uat-api.mycompany.com"  # UAT backend API endpoint
+
+# -------------------------------------------------
+# 🛡️ Security context - enforced by Azure Policy
+# -------------------------------------------------
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -------------------------------------------------
+# 💾 Writable temporary volume (for logs/temp files)
+# Required because root filesystem is read-only
+# -------------------------------------------------
+volumeMounts:
+  - name: tmp-storage
+    mountPath: /tmp
+
+volumes:
+  - name: tmp-storage
+    emptyDir: {}
+
+# -------------------------------------------------
+# 🧠 Resources (optional tuning for UAT)
+# -------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 150m
+    memory: 256Mi

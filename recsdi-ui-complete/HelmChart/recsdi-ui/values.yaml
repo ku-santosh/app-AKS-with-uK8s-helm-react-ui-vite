@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# 🧱 values.yaml — Base Configuration (Common Across Environments)
+# All environment-specific files inherit from this base.
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# ⚙️ Application Settings
+# ------------------------------------------------------------
+nameOverride: ""
+fullnameOverride: ""
+
+# Default replica count (can be overridden per env)
+replicaCount: 1
+
+# ------------------------------------------------------------
+# 🧩 Image Configuration
+# The repository and tag will be overridden per environment.
+# ------------------------------------------------------------
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: Always
+
+# ------------------------------------------------------------
+# 🚀 Deployment Configuration
+# ------------------------------------------------------------
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
+
+# ------------------------------------------------------------
+# 🧠 Environment Variables
+# Common environment variables used in all environments.
+# ------------------------------------------------------------
+envVars:
+  - name: NODE_ENV
+    value: "production"
+  - name: TZ
+    value: "Asia/Kolkata"
+
+# ------------------------------------------------------------
+# 🧪 Probes — Health Checks (common for all)
+# ------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  initialDelaySeconds: 20
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 5
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 5
+
+# ------------------------------------------------------------
+# 🧠 Service Configuration
+# ------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+  annotations: {}
+
+# ------------------------------------------------------------
+# 🌍 Ingress Configuration (enabled in all environments)
+# Each environment overrides hostnames and TLS secrets.
+# ------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts: []
+  tls: []
+
+# ------------------------------------------------------------
+# 💾 Resource Requests and Limits (Default)
+# These can be overridden per environment.
+# ------------------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# ------------------------------------------------------------
+# 🔄 Autoscaling (Disabled by Default)
+# Override in values-prod.yaml to enable.
+# ------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 75
+
+# ------------------------------------------------------------
+# 📦 Node Selector, Affinity, and Tolerations
+# (Optional for advanced scheduling)
+# ------------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ------------------------------------------------------------
+# 🧰 Common Labels
+# Add environment-independent metadata labels to all resources.
+# ------------------------------------------------------------
+labels:
+  app.kubernetes.io/managed-by: Helm
+  app.kubernetes.io/component: frontend
+  app.kubernetes.io/part-of: recsdi

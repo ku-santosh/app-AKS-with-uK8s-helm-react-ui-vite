@@ -1,0 +1,98 @@
+# --------------------------------------------------------------
+# 🌍 Production Environment - Helm values override for recsdi-ui
+# --------------------------------------------------------------
+
+# Identifies this environment
+env: prod
+
+# Run multiple replicas in production for reliability
+replicaCount: 2
+
+# -------------------------------------------------
+# 🖼️ Image settings
+# Will be overridden by CI/CD pipeline dynamically:
+#   --set image.repository=<prod_registry>
+#   --set image.tag=<commit_sha>-prod-latest
+# -------------------------------------------------
+image:
+  repository: ""   # pipeline injects via --set
+  tag: ""           # pipeline injects via --set
+  pullPolicy: IfNotPresent
+
+# -------------------------------------------------
+# 🔐 Image pull secrets (optional)
+# Needed only if ACR is not attached to AKS
+# -------------------------------------------------
+imagePullSecrets:
+  - name: acr-auth
+
+# -------------------------------------------------
+# 🧩 Service configuration
+# Exposed via internal or external load balancer
+# -------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+
+# -------------------------------------------------
+# 🌐 Ingress configuration
+# Production ingress with valid DNS + TLS certificate
+# -------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod  # Example: using cert-manager for TLS
+  hosts:
+    - host: recsdi-ui.prod.azpriv-cloud.ubs.net  # Production FQDN
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - recsdi-ui.prod.azpriv-cloud.ubs.net
+      secretName: recsdiui-prod-tls  # TLS certificate for Prod domain
+
+# -------------------------------------------------
+# ⚙️ ConfigMap entries (frontend runtime configuration)
+# -------------------------------------------------
+config:
+  VITE_ENV: "production"
+  VITE_API_URL: "https://api.mycompany.com"  # Prod API endpoint
+
+# -------------------------------------------------
+# 🛡️ Security context - required by Azure Policy
+# -------------------------------------------------
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -------------------------------------------------
+# 💾 Writable temp volume
+# Needed for any temporary files, logs, or caches
+# -------------------------------------------------
+volumeMounts:
+  - name: tmp-storage
+    mountPath: /tmp
+
+volumes:
+  - name: tmp-storage
+    emptyDir: {}
+
+# -------------------------------------------------
+# 🧠 Resource limits and requests (Production tuned)
+# -------------------------------------------------
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 400m
+    memory: 1Gi

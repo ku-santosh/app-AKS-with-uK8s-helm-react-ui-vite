@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# 🌱 values-dev.yaml — Development Environment Overrides
+# Used when merging any feature branch → dev
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# ⚙️ Environment Settings
+# ------------------------------------------------------------
+env: development
+namespace: at41457-dev-recsdiui-dev
+
+# ------------------------------------------------------------
+# 🧩 Image Configuration
+# Automatically set by GitLab CI/CD during deployment
+# ------------------------------------------------------------
+image:
+  repository: ubstdevacr.azurecr.io/recsdi-ui
+  tag: development-latest
+  pullPolicy: Always
+
+# ------------------------------------------------------------
+# 📦 Application Configuration
+# ------------------------------------------------------------
+replicaCount: 1
+service:
+  type: ClusterIP
+  port: 80
+
+# ------------------------------------------------------------
+# 🌍 Ingress Configuration
+# Dev environment domain (update to your actual host)
+# ------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: recsdi-ui-dev.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - recsdi-ui-dev.yourdomain.com
+      secretName: recsdi-ui-dev-tls
+
+# ------------------------------------------------------------
+# 🧠 Resource Requests and Limits
+# Keep minimal for development workloads
+# ------------------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# ------------------------------------------------------------
+# 🔧 Environment Variables
+# Passed into container at runtime
+# ------------------------------------------------------------
+envVars:
+  - name: NODE_ENV
+    value: "development"
+  - name: API_BASE_URL
+    value: "https://api-dev.yourdomain.com"
+  - name: LOG_LEVEL
+    value: "debug"
+
+# ------------------------------------------------------------
+# 🧪 Probes (Liveness / Readiness)
+# ------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  initialDelaySeconds: 15
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+# ------------------------------------------------------------
+# 🧰 Miscellaneous
+# ------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 2
+  targetCPUUtilizationPercentage: 75

@@ -1,0 +1,233 @@
+# --------------------------------------------------------------
+# 🌟 GitLab CI/CD pipeline for recsdi-ui (Merge Request Based)
+# Triggers deployment only on merge requests:
+#   - Any branch → dev   → Deploy to Dev
+#   - dev → uat          → Deploy to UAT
+#   - uat → main         → Deploy to Prod
+# --------------------------------------------------------------
+
+stages:
+  - test
+  - build
+  - validate
+  - deploy
+  - smoke_test
+
+# ---------------------
+# 🔧 Global Variables
+# ---------------------
+variables:
+  VAULT_AUTH_ROLE: gl_dev_at41457
+  VAULT_NAMESPACE: AT41457
+  VAULT_SERVER_URL: https://vault.eu.eva.ubsdev.net
+
+  REGISTRY_DEV: ubstdevacr.azurecr.io
+  REGISTRY_PROD: ubsreleaseacr.azurecr.io
+  IMAGE_NAME: recsdi-ui
+
+  DEV_NAMESPACE: at41457-dev-recsdiui-dev
+  UAT_NAMESPACE: at41457-uat-recsdiui-uat
+  PROD_NAMESPACE: at41457-prod-recsdiui-prod
+
+  HELM_CHART_PATH: ./HelmChart/recsdi-ui
+  TAG: $CI_COMMIT_SHORT_SHA
+  HELM_TIMEOUT: 10m
+
+# --------------------------------------------------------------
+# 🔐 Global Before Script
+# --------------------------------------------------------------
+before_script:
+  - echo "🔐 Authenticating to ACR..."
+  - echo $AZURE_ACR_PASSWORD | docker login $REGISTRY_DEV -u $AZURE_ACR_USERNAME --password-stdin
+
+# --------------------------------------------------------------
+# 🧪 Stage: Test
+# --------------------------------------------------------------
+test:
+  stage: test
+  image: node:18
+  script:
+    - echo "🧪 Running lint and tests..."
+    - npm ci
+    - npm run lint || true
+    - npm run test --if-present || true
+  only:
+    - merge_requests
+
+# --------------------------------------------------------------
+# 🏗️ Stage: Build (Runs once per merge)
+# --------------------------------------------------------------
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  script:
+    - echo "🏗️ Building image for merge request → target: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
+    # Decide target environment based on MR target
+    - |
+      case "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" in
+        dev)
+          ENV=development
+          REGISTRY=$REGISTRY_DEV
+          VALUES=$HELM_CHART_PATH/values-dev.yaml
+          ;;
+        uat)
+          ENV=uat
+          REGISTRY=$REGISTRY_DEV
+          VALUES=$HELM_CHART_PATH/values-uat.yaml
+          ;;
+        main)
+          ENV=production
+          REGISTRY=$REGISTRY_PROD
+          VALUES=$HELM_CHART_PATH/values-prod.yaml
+          ;;
+        *)
+          echo "⚠️ Not a valid promotion target branch. Skipping build."
+          exit 0
+          ;;
+      esac
+
+    # Login to appropriate ACR
+    - |
+      if [[ "$ENV" == "production" ]]; then
+        echo $AZURE_ACR_PASSWORD_PROD | docker login $REGISTRY -u $AZURE_ACR_USERNAME_PROD --password-stdin
+      else
+        echo $AZURE_ACR_PASSWORD | docker login $REGISTRY -u $AZURE_ACR_USERNAME --password-stdin
+      fi
+
+    # Build and push image
+    - docker build --build-arg ENV=$ENV -t $REGISTRY/$IMAGE_NAME:$TAG .
+    - docker push $REGISTRY/$IMAGE_NAME:$TAG
+
+    # Tag as latest for environment
+    - docker tag $REGISTRY/$IMAGE_NAME:$TAG $REGISTRY/$IMAGE_NAME:${ENV}-latest
+    - docker push $REGISTRY/$IMAGE_NAME:${ENV}-latest
+  only:
+    - merge_requests
+  except:
+    - tags
+
+# --------------------------------------------------------------
+# ✅ Stage: Validate (Helm lint + dry-run)
+# --------------------------------------------------------------
+validate:
+  stage: validate
+  image: alpine/helm:3.12.0
+  script:
+    - echo "✅ Validating Helm chart for MR target: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
+    # Select environment
+    - |
+      case "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" in
+        dev)
+          ENV=development
+          VALUES=$HELM_CHART_PATH/values-dev.yaml
+          REGISTRY=$REGISTRY_DEV
+          ;;
+        uat)
+          ENV=uat
+          VALUES=$HELM_CHART_PATH/values-uat.yaml
+          REGISTRY=$REGISTRY_DEV
+          ;;
+        main)
+          ENV=production
+          VALUES=$HELM_CHART_PATH/values-prod.yaml
+          REGISTRY=$REGISTRY_PROD
+          ;;
+        *)
+          echo "⚠️ Not a valid target for Helm validation."
+          exit 0
+          ;;
+      esac
+
+    - helm lint $HELM_CHART_PATH
+    - helm template recsdi-ui $HELM_CHART_PATH \
+        -f $VALUES \
+        --set image.repository=$REGISTRY/$IMAGE_NAME \
+        --set image.tag=$TAG \
+        --debug --dry-run
+  only:
+    - merge_requests
+
+# --------------------------------------------------------------
+# 🚀 Stage: Deploy (On Merge to target)
+# --------------------------------------------------------------
+deploy:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  script:
+    - echo "🚀 Deploying recsdi-ui after merge → target: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
+    # Map environment
+    - |
+      case "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" in
+        dev)
+          ENV=development
+          NAMESPACE=$DEV_NAMESPACE
+          VALUES=$HELM_CHART_PATH/values-dev.yaml
+          REGISTRY=$REGISTRY_DEV
+          ;;
+        uat)
+          ENV=uat
+          NAMESPACE=$UAT_NAMESPACE
+          VALUES=$HELM_CHART_PATH/values-uat.yaml
+          REGISTRY=$REGISTRY_DEV
+          ;;
+        main)
+          ENV=production
+          NAMESPACE=$PROD_NAMESPACE
+          VALUES=$HELM_CHART_PATH/values-prod.yaml
+          REGISTRY=$REGISTRY_PROD
+          ;;
+        *)
+          echo "⚠️ Not a valid deploy target. Exiting."
+          exit 0
+          ;;
+      esac
+
+    - echo "📦 Deploying to namespace: $NAMESPACE"
+    - helm dependency update $HELM_CHART_PATH || true
+    - helm upgrade --install recsdi-ui $HELM_CHART_PATH \
+        -f $VALUES \
+        --set image.repository=$REGISTRY/$IMAGE_NAME \
+        --set image.tag=$TAG \
+        --namespace $NAMESPACE \
+        --create-namespace \
+        --atomic \
+        --wait \
+        --timeout $HELM_TIMEOUT
+  only:
+    - merge_requests
+  when: on_success
+
+# --------------------------------------------------------------
+# 🔍 Stage: Smoke Test
+# --------------------------------------------------------------
+smoke_test:
+  stage: smoke_test
+  image: curlimages/curl:latest
+  script:
+    - echo "🔍 Running smoke test for MR target: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - |
+      case "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" in
+        dev)
+          URL="https://recsdi-ui-dev.yourdomain.com/health"
+          ;;
+        uat)
+          URL="https://recsdi-ui-uat.yourdomain.com/health"
+          ;;
+        main)
+          URL="https://recsdi-ui-prod.yourdomain.com/health"
+          ;;
+        *)
+          echo "⚠️ Not a valid environment. Skipping smoke test."
+          exit 0
+          ;;
+      esac
+    - echo "Pinging $URL ..."
+    - curl -k -f -s $URL || (echo "❌ Smoke test failed!" && exit 1)
+  only:
+    - merge_requests
+  when: on_success

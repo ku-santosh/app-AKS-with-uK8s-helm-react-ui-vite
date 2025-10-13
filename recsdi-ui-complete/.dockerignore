@@ -1,0 +1,26 @@
+# --------------------------------------------------------------
+# 🧱 Dockerignore file for recsdi-ui
+# Prevents unnecessary files from being included in Docker build
+# --------------------------------------------------------------
+
+node_modules
+dist
+build
+coverage
+.env
+.env.*
+.git
+.vscode
+.idea
+*.swp
+.DS_Store
+Thumbs.db
+test/
+tests/
+scripts/
+.gitlab-ci.yml
+.dockerignore
+HelmChart/
+values*.yaml
+*.md
+README.md

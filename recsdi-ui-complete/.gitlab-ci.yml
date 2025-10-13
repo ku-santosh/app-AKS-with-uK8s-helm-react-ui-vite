@@ -1,0 +1,251 @@
+# ------------------------------------------------------------------
+# Full-featured GitLab CI for recsdi-ui (build -> helm deploy)
+# - branch-aware: dev / uat / main (production)
+# - emits image metadata from build -> deploy via artifacts:reports:dotenv
+# - supports Azure AKS authentication, optional imagePullSecret create
+# - includes validation (helm lint/dry-run) and smoke tests
+# ------------------------------------------------------------------
+
+stages:
+  - test
+  - build
+  - validate
+  - deploy
+  - smoke
+  - notify
+
+# ------------------------
+# Global variables (override in GitLab CI/CD Settings)
+# ------------------------
+variables:
+  # Registries
+  REGISTRY_DEV: ubstdevacr.azurecr.io
+  REGISTRY_PROD: ubsreleaseacr.azurecr.io
+
+  # Application / Helm
+  IMAGE_NAME: recsdi-ui
+  HELM_CHART_PATH: HelmChart/recsdi-ui
+
+  # Helm options
+  HELM_WAIT: "--wait --timeout 8m"
+
+# ------------------------
+# Global before_script (non-sensitive). We'll still login in jobs to the right registry.
+# ------------------------
+before_script:
+  - echo "CI running on branch: $CI_COMMIT_BRANCH"
+
+# ------------------------
+# 1) Test: run lint/tests
+# ------------------------
+test:
+  stage: test
+  image: node:18
+  script:
+    - echo "Running tests and lint..."
+    - npm ci
+    - npm run lint || true
+    - npm run test --if-present || true
+  only:
+    - branches
+
+# ------------------------
+# 2) Build: branch-aware build + push + create image_info.env (dotenv)
+# ------------------------
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  variables:
+    DOCKER_DRIVER: overlay2
+  script:
+    - |
+      # Determine environment and registry based on branch
+      if [[ "$CI_COMMIT_BRANCH" == "dev" ]]; then
+        ENV=development
+        REGISTRY=${REGISTRY_DEV}
+        VALUES=${HELM_CHART_PATH}/values-dev.yaml
+      elif [[ "$CI_COMMIT_BRANCH" == "uat" ]]; then
+        ENV=uat
+        REGISTRY=${REGISTRY_DEV}
+        VALUES=${HELM_CHART_PATH}/values-uat.yaml
+      else
+        ENV=production
+        REGISTRY=${REGISTRY_PROD}
+        VALUES=${HELM_CHART_PATH}/values-prod.yaml
+      fi
+
+    - export IMAGE_TAG=${CI_COMMIT_SHA:0:8}
+    - echo "Building for env=$ENV, registry=$REGISTRY, tag=$IMAGE_TAG"
+
+    # Login - each job must login to its registry (credentials stored in CI variables)
+    - |
+      if [[ "$REGISTRY" == "$REGISTRY_PROD" ]]; then
+        echo "Logging to PROD registry $REGISTRY"
+        echo ${AZURE_ACR_PASSWORD_PROD} | docker login ${REGISTRY} -u ${AZURE_ACR_USERNAME_PROD} --password-stdin
+      else
+        echo "Logging to DEV registry $REGISTRY"
+        echo ${AZURE_ACR_PASSWORD} | docker login ${REGISTRY} -u ${AZURE_ACR_USERNAME} --password-stdin
+      fi
+
+    - docker build --build-arg ENV=$ENV -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} .
+    - docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+
+    # tag latest alias per environment
+    - docker tag ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:${ENV}-latest
+    - docker push ${REGISTRY}/${IMAGE_NAME}:${ENV}-latest
+
+    # Emit variables for downstream jobs (GitLab will import .env file into later jobs)
+    - echo "IMAGE_REGISTRY=${REGISTRY}" > image_info.env
+    - echo "IMAGE_TAG=${IMAGE_TAG}" >> image_info.env
+    - echo "IMAGE_NAME=${IMAGE_NAME}" >> image_info.env
+    - echo "VALUES_FILE=${VALUES}" >> image_info.env
+    - echo "ENV=${ENV}" >> image_info.env
+
+    # save a build log
+    - echo "Build finished at $(date)" > build.log
+  artifacts:
+    reports:
+      dotenv: image_info.env      # exposes IMAGE_REGISTRY, IMAGE_TAG, IMAGE_NAME, VALUES_FILE, ENV to downstream jobs
+    paths:
+      - build.log
+    expire_in: 1 hour
+  except:
+    - tags
+
+# ------------------------
+# 3) Validate: helm lint + helm template (dry-run)
+# ------------------------
+validate:
+  stage: validate
+  image: alpine/helm:3.12.0
+  dependencies:
+    - build
+  script:
+    - echo "Validating Helm chart (lint + dry-run template)..."
+    - helm repo add stable https://charts.helm.sh/stable || true
+    - helm dependency update ${HELM_CHART_PATH} || true
+    - helm lint ${HELM_CHART_PATH}
+    - helm template recsdi-ui ${HELM_CHART_PATH} -f ${VALUES_FILE} \
+        --set image.repository=${IMAGE_REGISTRY}/${IMAGE_NAME} \
+        --set image.tag=${IMAGE_TAG} \
+        --debug --kube-version "1.26.0" --dry-run
+  only:
+    - branches
+
+# ------------------------
+# 4) Deploy: uses az cli to get AKS creds, optionally creates imagePullSecret, helm upgrade
+# ------------------------
+deploy:
+  stage: deploy
+  image: mcr.microsoft.com/azure-cli:latest
+  dependencies:
+    - build
+  script:
+    - echo "Starting deploy. ENV=${ENV}, NAMESPACE var to be set below."
+    # Set namespace based on ENV (mirror your naming convention)
+    - |
+      if [[ "${ENV}" == "development" ]]; then
+        NAMESPACE="at41457-dev-recsdiui-dev"
+      elif [[ "${ENV}" == "uat" ]]; then
+        NAMESPACE="at41457-uat-recsdiui-uat"
+      else
+        NAMESPACE="at41457-prod-recsdiui-prod"
+      fi
+    - echo "Deploying to namespace: $NAMESPACE"
+
+    # Azure login using service principal (set these in CI variables) - optional if runner already has kubeconfig
+    - |
+      if [[ -n "${AZURE_CLIENT_ID}" && -n "${AZURE_CLIENT_SECRET}" && -n "${AZURE_TENANT_ID}" && -n "${AZURE_SUBSCRIPTION_ID}" ]]; then
+        echo "Logging into Azure using service principal..."
+        az login --service-principal -u "${AZURE_CLIENT_ID}" -p "${AZURE_CLIENT_SECRET}" --tenant "${AZURE_TENANT_ID}"
+        az account set -s "${AZURE_SUBSCRIPTION_ID}"
+      fi
+
+    # Get AKS credentials (optional, if using kubeconfig in CI use that instead)
+    - |
+      if [[ -n "${AKS_CLUSTER_NAME}" && -n "${AKS_RESOURCE_GROUP}" ]]; then
+        echo "Getting AKS credentials for ${AKS_CLUSTER_NAME}..."
+        az aks get-credentials --resource-group "${AKS_RESOURCE_GROUP}" --name "${AKS_CLUSTER_NAME}" --overwrite-existing
+      else
+        echo "AKS_CLUSTER_NAME or AKS_RESOURCE_GROUP not provided - assuming kubeconfig is available in runner."
+      fi
+
+    # Optionally create imagePullSecret in target namespace if ACR not attached to AKS nodes
+    - |
+      if [[ "${CREATE_IMAGEPULLSECRET}" == "true" ]]; then
+        echo "Creating imagePullSecret 'acr-auth' in namespace ${NAMESPACE} (idempotent)..."
+        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+        kubectl delete secret acr-auth -n ${NAMESPACE} --ignore-not-found=true
+        # choose correct credentials based on registry
+        if [[ "${IMAGE_REGISTRY}" == "${REGISTRY_PROD}" ]]; then
+          kubectl create secret docker-registry acr-auth \
+            --docker-server=${IMAGE_REGISTRY} \
+            --docker-username=${AZURE_ACR_USERNAME_PROD} \
+            --docker-password=${AZURE_ACR_PASSWORD_PROD} \
+            -n ${NAMESPACE}
+        else
+          kubectl create secret docker-registry acr-auth \
+            --docker-server=${IMAGE_REGISTRY} \
+            --docker-username=${AZURE_ACR_USERNAME} \
+            --docker-password=${AZURE_ACR_PASSWORD} \
+            -n ${NAMESPACE}
+        fi
+      else
+        echo "CREATE_IMAGEPULLSECRET != true, skipping secret creation (assumes AKS can pull)."
+      fi
+
+    # Helm deploy: linted earlier, now upgrade/install with image and values
+    - helm repo add stable https://charts.helm.sh/stable || true
+    - helm dependency update ${HELM_CHART_PATH} || true
+    - helm upgrade --install recsdi-ui ${HELM_CHART_PATH} \
+        -f ${VALUES_FILE} \
+        --set image.repository=${IMAGE_REGISTRY}/${IMAGE_NAME} \
+        --set image.tag=${IMAGE_TAG} \
+        --namespace ${NAMESPACE} \
+        --create-namespace \
+        ${HELM_WAIT} \
+        --atomic \
+        --timeout 10m
+
+    # Wait for rollout
+    - kubectl rollout status deployment/recsdi-ui -n ${NAMESPACE} --timeout=6m || (kubectl describe deployment recsdi-ui -n ${NAMESPACE}; kubectl get pods -n ${NAMESPACE}; exit 1)
+
+  only:
+    - branches
+
+# ------------------------
+# 5) Smoke test: basic health check after deploy
+# ------------------------
+smoke_test:
+  stage: smoke
+  image: curlimages/curl:8.3.0
+  dependencies:
+    - deploy
+  script:
+    - echo "Running smoke test for ${ENV}..."
+    - |
+      # try a basic HTTP health check endpoint (adjust path/host per env)
+      if [[ "${ENV}" == "production" ]]; then
+        URL="https://recsdi-ui.prod.example.com/health"
+      elif [[ "${ENV}" == "uat" ]]; then
+        URL="https://recsdi-ui.uat.example.com/health"
+      else
+        URL="https://recsdi-ui.dev.example.com/health"
+      fi
+    - echo "Checking ${URL}"
+    - for i in {1..10}; do curl -fsS ${URL} && break || (echo "retrying... ($i)"; sleep 6); done
+  allow_failure: true
+  only:
+    - branches
+
+# ------------------------
+# 6) Optional notify job (slack/email)
+# ------------------------
+notify:
+  stage: notify
+  image: alpine:3.18
+  script:
+    - echo "Pipeline finished for $CI_COMMIT_REF_NAME (status: $CI_JOB_STATUS)"
+  when: always
