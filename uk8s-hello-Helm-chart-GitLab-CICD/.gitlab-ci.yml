@@ -1,0 +1,42 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE_REGISTRY: "container-registry.ubs.net"
+  IMAGE_PROJECT: "ubs/ibent"
+  IMAGE_NAME: "uk8s-hello-whisly"
+  HELM_CHART_PATH: "uk8s-hello-helm"
+  HELM_RELEASE: "uk8s-hello"
+  KUBE_NAMESPACE: "et14157-dev-recsdiui-dev"
+
+build-and-push:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $IMAGE_REGISTRY
+    - docker build -t $IMAGE_REGISTRY/$IMAGE_PROJECT/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker push $IMAGE_REGISTRY/$IMAGE_PROJECT/$IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH =~ /^(dev|uat|main)$/'
+      when: always
+
+deploy-helm:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  script:
+    - helm upgrade --install $HELM_RELEASE $HELM_CHART_PATH --namespace $KUBE_NAMESPACE --create-namespace \
+        --set image.repository=$IMAGE_REGISTRY/$IMAGE_PROJECT/$IMAGE_NAME \
+        --set image.tag=$CI_COMMIT_SHORT_SHA
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH == "dev"'
+      variables:
+        KUBE_NAMESPACE: "et14157-dev-recsdiui-dev"
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH == "uat"'
+      variables:
+        KUBE_NAMESPACE: "et14157-uat-recsdiui-uat"
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH == "main"'
+      variables:
+        KUBE_NAMESPACE: "et14157-prod-recsdiui-prod"
